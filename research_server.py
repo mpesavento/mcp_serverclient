@@ -8,7 +8,10 @@ from mcp.server.fastmcp import FastMCP
 PAPER_DIR = "papers"
 
 # Initialize FastMCP server
-mcp = FastMCP("research")
+# mcp = FastMCP("research")
+
+# use this for SSE remote server
+mcp = FastMCP("research", port=8001)
 
 @mcp.tool()
 def search_papers(topic: str, max_results: int = 5) -> List[str]:
@@ -192,4 +195,7 @@ Please present both detailed information about each paper and a high-level synth
 
 if __name__ == "__main__":
     # Initialize and run the server
-    mcp.run(transport='stdio')
+    # mcp.run(transport='stdio')
+
+    # to run an SSE remote server, use the following command:
+    mcp.run(transport='sse')
