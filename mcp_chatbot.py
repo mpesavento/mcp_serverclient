@@ -1,7 +1,7 @@
 
 from dotenv import load_dotenv
 from anthropic import Anthropic
-from mcp import ClientSession, StdioServerParameters, types
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from typing import List, Dict, TypedDict
 from contextlib import AsyncExitStack
@@ -33,6 +33,8 @@ class MCP_ChatBot:
 
         # initialize the tools
         self.available_tools: List[ToolDefinition] = []
+        # Prompts list for quick display
+        self.available_prompts = []
         self.tool_to_session: Dict[str, ClientSession] = {}
 
 
@@ -47,25 +49,42 @@ class MCP_ChatBot:
             session = await self.exit_stack.enter_async_context(
                 ClientSession(read, write)
             )
-
             #initialize the connection (1:1 with the server)
             await session.initialize()
-            self.sessions.append(session)
 
-            # List available tools for this session
-            response = await session.list_tools()
-            tools = response.tools
-            print(f"\nConnected to {server_name} with tools:", [t.name for t in tools])
+            try:
+                # List available tools
+                response = await session.list_tools()
+                for tool in response.tools:
+                    self.sessions[tool.name] = session
+                    self.available_tools.append({
+                        "name": tool.name,
+                        "description": tool.description,
+                        "input_schema": tool.inputSchema
+                    })
 
-            for tool in tools:
-                self.tool_to_session[tool.name] = session
-                self.available_tools.append({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "input_schema": tool.inputSchema
-                })
+                # List available prompts
+                prompts_response = await session.list_prompts()
+                if prompts_response and prompts_response.prompts:
+                    for prompt in prompts_response.prompts:
+                        self.sessions[prompt.name] = session
+                        self.available_prompts.append({
+                            "name": prompt.name,
+                            "description": prompt.description,
+                            "arguments": prompt.arguments
+                        })
+                # List available resources
+                resources_response = await session.list_resources()
+                if resources_response and resources_response.resources:
+                    for resource in resources_response.resources:
+                        resource_uri = str(resource.uri)
+                        self.sessions[resource_uri] = session
+
+            except Exception as e:
+                print(f"Error {e}")
+
         except Exception as e:
-            print(f"Failed to connect to {server_name}: {e}")
+            print(f"Error connecting to {server_name}: {e}")
 
     async def connect_to_servers(self): # new
         """
@@ -77,9 +96,7 @@ class MCP_ChatBot:
         try:
             with open("server_config.json", "r") as file:
                 data = json.load(file)
-
             servers = data.get("mcpServers", {})
-
             for server_name, server_config in servers.items():
                 await self.connect_to_server(server_name, server_config)
         except Exception as e:
@@ -92,6 +109,7 @@ class MCP_ChatBot:
                                       model = 'claude-3-7-sonnet-20250219',
                                       tools = self.available_tools,
                                       messages = messages)
+
         process_query = True
         while process_query:
             assistant_content = []
